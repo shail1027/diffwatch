@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<title>Request Diff</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0c0c0e;
+  --surface:   #131316;
+  --surface2:  #1c1c21;
+  --border:    #26262e;
+  --border2:   #33333d;
+  --text:      #e8e8f0;
+  --muted:     #5a5a72;
+  --muted2:    #3d3d50;
+  --accent:    #7fffb2;        /* 민트 그린 */
+  --accent-dim: rgba(127,255,178,0.08);
+  --add:       #1a3d2b;
+  --add-text:  #6effaa;
+  --add-line:  rgba(110,255,170,0.15);
+  --del:       #3d1a1a;
+  --del-text:  #ff6e6e;
+  --del-line:  rgba(255,110,110,0.15);
+  --neutral:   #1e1e26;
+  --pill-get:    #1a3a2a;
+  --pill-get-t:  #5effa0;
+  --pill-post:   #1a2a3a;
+  --pill-post-t: #5eaaff;
+  --pill-put:    #2a2a1a;
+  --pill-put-t:  #ffdd5e;
+  --pill-del:    #3a1a1a;
+  --pill-del-t:  #ff6e6e;
+  --mono: 'JetBrains Mono', monospace;
+  --display: 'Syne', sans-serif;
+  --panel-left: 340px;
+}
+
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 12px; overflow: hidden; }
+
+.app { display: flex; flex-direction: column; height: 100vh; }
+
+.toolbar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.logo {
+  font-family: var(--display);
+  font-size: 14px; font-weight: 800;
+  color: var(--accent);
+  letter-spacing: -0.02em;
+  margin-right: 4px;
+}
+
+.toolbar-sep { width: 1px; height: 18px; background: var(--border2); }
+
+.filter-input {
+  flex: 1; max-width: 260px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-family: var(--mono); font-size: 11px;
+  padding: 5px 10px; outline: none;
+  transition: border-color .2s;
+}
+.filter-input:focus { border-color: var(--accent); }
+.filter-input::placeholder { color: var(--muted); }
+
+.btn {
+  display: flex; align-items: center; gap: 5px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-family: var(--mono); font-size: 11px;
+  padding: 5px 11px; cursor: pointer;
+  transition: border-color .15s, background .15s;
+  white-space: nowrap;
+}
+.btn:hover { border-color: var(--border2); background: var(--border); }
+.btn.accent { background: var(--accent); color: #0c0c0e; border-color: var(--accent); font-weight: 600; }
+.btn.accent:hover { opacity: .85; }
+.btn.danger:hover { border-color: var(--del-text); color: var(--del-text); }
+
+.capture-count {
+  margin-left: auto;
+  font-size: 10px; color: var(--muted);
+}
+
+/* ── Main body ───────────────────────────────────── */
+.body { display: flex; flex: 1; overflow: hidden; }
+
+/* ── Left: request list ──────────────────────────── */
+.list-panel {
+  width: var(--panel-left);
+  min-width: 220px; max-width: 460px;
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  resize: horizontal;
+}
+
+.list-header {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 10px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .08em;
+  flex-shrink: 0;
+}
+
+.list-scroll { flex: 1; overflow-y: auto; }
+.list-scroll::-webkit-scrollbar { width: 4px; }
+.list-scroll::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+.req-item {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background .1s;
+  position: relative;
+}
+.req-item:hover { background: var(--surface2); }
+.req-item.selected { background: var(--accent-dim); }
+.req-item.pinned-a { border-left: 3px solid var(--add-text); }
+.req-item.pinned-b { border-left: 3px solid var(--del-text); }
+
+.req-left { flex: 1; min-width: 0; }
+
+.method-pill {
+  display: inline-block;
+  font-size: 9px; font-weight: 600;
+  padding: 1px 6px; border-radius: 3px;
+  margin-bottom: 4px; letter-spacing: .04em;
+}
+.method-GET    { background: var(--pill-get);  color: var(--pill-get-t); }
+.method-POST   { background: var(--pill-post); color: var(--pill-post-t); }
+.method-PUT    { background: var(--pill-put);  color: var(--pill-put-t); }
+.method-PATCH  { background: var(--pill-put);  color: var(--pill-put-t); }
+.method-DELETE { background: var(--pill-del);  color: var(--pill-del-t); }
+
+.req-url {
+  font-size: 11px; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  line-height: 1.4;
+}
+
+.req-meta {
+  display: flex; gap: 6px; margin-top: 3px;
+  font-size: 9.5px; color: var(--muted);
+}
+
+.status-badge { font-size: 9.5px; }
+.status-2xx { color: var(--add-text); }
+.status-3xx { color: #ffd76e; }
+.status-4xx, .status-5xx { color: var(--del-text); }
+
+.pin-btns {
+  display: flex; flex-direction: column; gap: 3px;
+  flex-shrink: 0;
+}
+.pin-btn {
+  font-size: 9px; padding: 2px 6px;
+  border-radius: 3px; border: 1px solid var(--border2);
+  background: var(--surface2); cursor: pointer;
+  color: var(--muted); transition: all .15s;
+  font-family: var(--mono);
+}
+.pin-btn.pin-a:hover { background: var(--add); color: var(--add-text); border-color: var(--add-text); }
+.pin-btn.pin-b:hover { background: var(--del); color: var(--del-text); border-color: var(--del-text); }
+.pin-btn.active-a { background: var(--add); color: var(--add-text); border-color: var(--add-text); }
+.pin-btn.active-b { background: var(--del); color: var(--del-text); border-color: var(--del-text); }
+
+.list-empty {
+  padding: 32px 20px; text-align: center;
+  color: var(--muted); line-height: 2;
+  font-size: 11px;
+}
+.list-empty .hint { font-size: 10px; color: var(--muted2); margin-top: 6px; }
+
+.diff-panel {
+  flex: 1; display: flex; flex-direction: column; overflow: hidden;
+}
+
+.diff-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+
+.diff-label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 10px;
+}
+.diff-label-a { color: var(--add-text); }
+.diff-label-b { color: var(--del-text); }
+.diff-label-url {
+  max-width: 200px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  color: var(--muted);
+}
+
+.diff-sep { flex: 1; }
+
+.diff-stats {
+  display: flex; gap: 10px; font-size: 10px;
+}
+.stat-add { color: var(--add-text); }
+.stat-del { color: var(--del-text); }
+
+.mode-tabs { display: flex; gap: 2px; margin-left: 8px; }
+.mode-tab {
+  font-size: 10px; padding: 3px 9px; border-radius: 4px;
+  background: none; border: 1px solid var(--border);
+  color: var(--muted); cursor: pointer; font-family: var(--mono);
+  transition: all .15s;
+}
+.mode-tab.active { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+
+.diff-body { flex: 1; overflow-y: auto; overflow-x: auto; }
+.diff-body::-webkit-scrollbar { width: 5px; height: 5px; }
+.diff-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+.diff-table {
+  width: 100%; border-collapse: collapse;
+  font-size: 11.5px; line-height: 1.6;
+}
+
+.diff-line { display: flex; }
+
+.line-no {
+  width: 42px; min-width: 42px;
+  padding: 0 8px;
+  text-align: right;
+  color: var(--muted2);
+  user-select: none;
+  border-right: 1px solid var(--border);
+  font-size: 10px; line-height: 20px;
+}
+
+.line-sign {
+  width: 18px; min-width: 18px;
+  text-align: center;
+  line-height: 20px;
+  font-weight: 600;
+  user-select: none;
+}
+
+.line-code {
+  flex: 1; padding: 0 12px;
+  white-space: pre; line-height: 20px;
+  overflow: hidden;
+}
+
+.line-add { background: var(--add-line); }
+.line-add .line-sign { color: var(--add-text); }
+.line-add .line-code { color: var(--add-text); }
+.line-add .line-no   { background: var(--add); }
+
+.line-del { background: var(--del-line); }
+.line-del .line-sign { color: var(--del-text); }
+.line-del .line-code { color: var(--del-text); }
+.line-del .line-no   { background: var(--del); }
+
+.line-ctx .line-code { color: var(--muted); }
+
+.line-hunk {
+  background: var(--surface2);
+  padding: 2px 16px;
+  color: var(--muted); font-size: 10px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+/* ── Placeholder / no-diff ───────────────────────── */
+.diff-placeholder {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  height: 100%; gap: 12px;
+  color: var(--muted); text-align: center; line-height: 1.8;
+}
+.diff-placeholder .big { font-size: 32px; }
+.diff-placeholder p { font-size: 11px; }
+.diff-placeholder .hint { font-size: 10px; color: var(--muted2); }
+
+.no-diff-msg {
+  padding: 40px; text-align: center;
+  color: var(--add-text); font-size: 13px;
+}
+.no-diff-msg .sub { color: var(--muted); font-size: 11px; margin-top: 6px; }
+
+.sbs-wrap { display: flex; height: 100%; }
+.sbs-col { flex: 1; overflow: auto; border-right: 1px solid var(--border); }
+.sbs-col:last-child { border-right: none; }
+.sbs-col-header {
+  padding: 6px 14px; font-size: 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  position: sticky; top: 0; z-index: 1;
+}
+.sbs-col-header.a { color: var(--add-text); }
+.sbs-col-header.b { color: var(--del-text); }
+.sbs-json {
+  padding: 12px 16px;
+  font-size: 11.5px; line-height: 1.7;
+  white-space: pre; color: var(--muted);
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="toolbar">
+    <span class="logo">≠ Request Diff</span>
+    <div class="toolbar-sep"></div>
+    <input class="filter-input" id="filter" placeholder="URL 필터 (예: /api/users)"/>
+    <button class="btn" id="btn-capture" title="네트워크 요청 목록 새로고침">↻ 새로고침</button>
+    <button class="btn accent" id="btn-diff" title="선택된 A·B 비교">▷ DIFF 실행</button>
+    <button class="btn danger" id="btn-clear">✕ 초기화</button>
+    <span class="capture-count" id="capture-count"></span>
+  </div>
+
+  <div class="body">
+
+    <div class="list-panel">
+      <div class="list-header">캡처된 요청 — A·B 버튼으로 비교 대상 선택</div>
+      <div class="list-scroll" id="list-scroll">
+        <div class="list-empty" id="list-empty">
+          <div>요청이 없어요</div>
+          <div class="hint">페이지를 이동하거나 새로고침하면<br/>XHR / Fetch 요청이 자동 캡처됩니다</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="diff-panel">
+      <div class="diff-header" id="diff-header" style="display:none">
+        <div class="diff-label diff-label-a" id="hdr-a">A —</div>
+        <div class="diff-label diff-label-b" id="hdr-b">B —</div>
+        <div class="diff-sep"></div>
+        <div class="diff-stats" id="diff-stats"></div>
+        <div class="mode-tabs">
+          <button class="mode-tab active" data-mode="unified">Unified</button>
+          <button class="mode-tab" data-mode="sbs">Side-by-side</button>
+          <button class="mode-tab" data-mode="raw">Raw</button>
+        </div>
+      </div>
+
+      <div class="diff-body" id="diff-body">
+        <div class="diff-placeholder">
+          <div class="big">≠</div>
+          <p>두 요청을 선택하면<br/>git diff 스타일로 비교해드려요</p>
+          <div class="hint">왼쪽 목록에서 A · B 버튼을 눌러 비교 대상을 선택하세요</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+
+let entries    = [];   // 캡처된 전체 요청
+let pinA       = null; // 비교 대상 A
+let pinB       = null; // 비교 대상 B
+let diffMode   = "unified";
+let filterText = "";
+let pollTimer  = null;
+
+function init() {
+  document.getElementById("btn-capture").addEventListener("click", loadEntries);
+  document.getElementById("btn-diff").addEventListener("click", runDiff);
+  document.getElementById("btn-clear").addEventListener("click", clearAll);
+  document.getElementById("filter").addEventListener("input", e => {
+    filterText = e.target.value.toLowerCase();
+    renderList();
+  });
+  document.querySelectorAll(".mode-tab").forEach(btn => {
+    btn.addEventListener("click", () => {
+      diffMode = btn.dataset.mode;
+      document.querySelectorAll(".mode-tab").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      if (pinA && pinB) runDiff();
+    });
+  });
+
+  loadEntries();
+  // 3초마다 자동 폴링
+  pollTimer = setInterval(loadEntries, 3000);
+}
+
+// ── 요청 목록 로드 ────────────────────────────────────────
+function loadEntries() {
+  chrome.storage.session.get("rdEntries", ({ rdEntries = [] }) => {
+    entries = rdEntries;
+    renderList();
+    document.getElementById("capture-count").textContent =
+      entries.length ? `${entries.length}개 캡처됨` : "";
+  });
+}
+
+function clearAll() {
+  chrome.storage.session.set({ rdEntries: [] });
+  entries = []; pinA = null; pinB = null;
+  renderList();
+  resetDiff();
+}
+
+function renderList() {
+  const scroll = document.getElementById("list-scroll");
+  const empty  = document.getElementById("list-empty");
+
+  const filtered = entries.filter(e =>
+    !filterText || e.url.toLowerCase().includes(filterText)
+  );
+
+  if (!filtered.length) {
+    scroll.innerHTML = "";
+    const msg = document.createElement("div");
+    msg.className = "list-empty";
+    msg.innerHTML = filterText
+      ? `<div>"${filterText}" 결과 없음</div>`
+      : `<div>요청이 없어요</div><div class="hint">페이지를 이동하거나 새로고침하면<br/>XHR / Fetch 요청이 자동 캡처됩니다</div>`;
+    scroll.appendChild(msg);
+    return;
+  }
+
+  scroll.innerHTML = filtered.map(e => {
+    const urlObj  = tryParseUrl(e.url);
+    const path    = urlObj ? urlObj.pathname + urlObj.search : e.url;
+    const host    = urlObj ? urlObj.hostname : "";
+    const isPinA  = pinA?.id === e.id;
+    const isPinB  = pinB?.id === e.id;
+    const sc      = statusClass(e.status);
+    const time    = new Date(e.capturedAt).toLocaleTimeString("ko-KR", { hour12: false });
+
+    return `
+      <div class="req-item${isPinA ? " pinned-a" : isPinB ? " pinned-b" : ""}" data-id="${e.id}">
+        <div class="req-left">
+          <div><span class="method-pill method-${e.method}">${e.method}</span></div>
+          <div class="req-url" title="${e.url}">${path}</div>
+          <div class="req-meta">
+            <span class="${sc}">${e.status}</span>
+            <span>${host}</span>
+            <span>${time}</span>
+          </div>
+        </div>
+        <div class="pin-btns">
+          <button class="pin-btn pin-a${isPinA ? " active-a" : ""}" data-id="${e.id}" title="A로 설정">A</button>
+          <button class="pin-btn pin-b${isPinB ? " active-b" : ""}" data-id="${e.id}" title="B로 설정">B</button>
+        </div>
+      </div>`;
+  }).join("");
+
+  scroll.querySelectorAll(".pin-btn.pin-a").forEach(btn => {
+    btn.addEventListener("click", e => { e.stopPropagation(); setPin("A", btn.dataset.id); });
+  });
+  scroll.querySelectorAll(".pin-btn.pin-b").forEach(btn => {
+    btn.addEventListener("click", e => { e.stopPropagation(); setPin("B", btn.dataset.id); });
+  });
+}
+
+function setPin(slot, id) {
+  const entry = entries.find(e => e.id === id);
+  if (!entry) return;
+  if (slot === "A") pinA = entry;
+  else              pinB = entry;
+  renderList();
+  // 둘 다 세팅되면 자동 실행
+  if (pinA && pinB) runDiff();
+}
+
+// ── Diff 실행 ─────────────────────────────────────────────
+function runDiff() {
+  if (!pinA || !pinB) {
+    alert("A와 B를 모두 선택해주세요.");
+    return;
+  }
+
+  const bodyA = prettyJson(pinA.body);
+  const bodyB = prettyJson(pinB.body);
+
+  document.getElementById("diff-header").style.display = "flex";
+  document.getElementById("hdr-a").textContent = `A — ${shortUrl(pinA.url)}`;
+  document.getElementById("hdr-b").textContent = `B — ${shortUrl(pinB.url)}`;
+
+  if (diffMode === "unified")    renderUnified(bodyA, bodyB);
+  else if (diffMode === "sbs")   renderSideBySide(bodyA, bodyB);
+  else                           renderRaw(bodyA, bodyB);
+}
+
+function renderUnified(textA, textB) {
+  const linesA = textA.split("\n");
+  const linesB = textB.split("\n");
+  const patch   = computeDiff(linesA, linesB);
+
+  let adds = 0, dels = 0;
+  const html = [];
+
+  patch.forEach(hunk => {
+    html.push(`<div class="line-hunk">@@ -${hunk.startA},${hunk.lenA} +${hunk.startB},${hunk.lenB} @@</div>`);
+    hunk.lines.forEach(({ type, text, noA, noB }) => {
+      if (type === "add") adds++;
+      if (type === "del") dels++;
+      const cls  = type === "add" ? "line-add" : type === "del" ? "line-del" : "line-ctx";
+      const sign = type === "add" ? "+" : type === "del" ? "−" : " ";
+      const noAStr = noA != null ? noA : "";
+      const noBStr = noB != null ? noB : "";
+      html.push(`
+        <div class="diff-line ${cls}">
+          <div class="line-no">${noAStr}</div>
+          <div class="line-no">${noBStr}</div>
+          <div class="line-sign">${sign}</div>
+          <div class="line-code">${escHtml(text)}</div>
+        </div>`);
+    });
+  });
+
+  document.getElementById("diff-stats").innerHTML =
+    adds || dels
+      ? `<span class="stat-add">+${adds}</span><span class="stat-del">−${dels}</span>`
+      : `<span style="color:var(--add-text)">변경 없음</span>`;
+
+  const body = document.getElementById("diff-body");
+  if (!adds && !dels) {
+    body.innerHTML = `<div class="no-diff-msg">✓ 두 응답이 동일합니다<div class="sub">차이가 없어요</div></div>`;
+  } else {
+    body.innerHTML = `<div class="diff-table">${html.join("")}</div>`;
+  }
+}
+
+function renderSideBySide(textA, textB) {
+  const body = document.getElementById("diff-body");
+  body.innerHTML = `
+    <div class="sbs-wrap">
+      <div class="sbs-col">
+        <div class="sbs-col-header a">A — ${escHtml(shortUrl(pinA.url))}</div>
+        <div class="sbs-json">${syntaxHighlight(textA)}</div>
+      </div>
+      <div class="sbs-col">
+        <div class="sbs-col-header b">B — ${escHtml(shortUrl(pinB.url))}</div>
+        <div class="sbs-json">${syntaxHighlight(textB)}</div>
+      </div>
+    </div>`;
+  document.getElementById("diff-stats").innerHTML = "";
+}
+
+function renderRaw(textA, textB) {
+  const body = document.getElementById("diff-body");
+  body.innerHTML = `
+    <div class="sbs-wrap">
+      <div class="sbs-col">
+        <div class="sbs-col-header a">A Raw</div>
+        <div class="sbs-json">${escHtml(pinA.body)}</div>
+      </div>
+      <div class="sbs-col">
+        <div class="sbs-col-header b">B Raw</div>
+        <div class="sbs-json">${escHtml(pinB.body)}</div>
+      </div>
+    </div>`;
+  document.getElementById("diff-stats").innerHTML = "";
+}
+
+function resetDiff() {
+  document.getElementById("diff-header").style.display = "none";
+  document.getElementById("diff-body").innerHTML = `
+    <div class="diff-placeholder">
+      <div class="big">≠</div>
+      <p>두 요청을 선택하면<br/>git diff 스타일로 비교해드려요</p>
+      <div class="hint">왼쪽 목록에서 A · B 버튼을 눌러 비교 대상을 선택하세요</div>
+    </div>`;
+}
+
+function computeDiff(linesA, linesB) {
+  const N = linesA.length, M = linesB.length;
+  const MAX = N + M;
+  const V = new Array(2 * MAX + 1).fill(0);
+
+  function ses() {
+    const trace = [];
+    for (let d = 0; d <= MAX; d++) {
+      trace.push([...V]);
+      for (let k = -d; k <= d; k += 2) {
+        let x;
+        const idx = k + MAX;
+        if (k === -d || (k !== d && V[idx - 1] < V[idx + 1])) x = V[idx + 1];
+        else x = V[idx - 1] + 1;
+        let y = x - k;
+        while (x < N && y < M && linesA[x] === linesB[y]) { x++; y++; }
+        V[idx] = x;
+        if (x >= N && y >= M) return trace;
+      }
+    }
+    return trace;
+  }
+
+  const trace = ses();
+
+  const ops = [];
+  let x = N, y = M;
+  for (let d = trace.length - 1; d >= 0; d--) {
+    const v = trace[d];
+    const k = x - y;
+    const idx = k + MAX;
+    let prevK;
+    if (k === -d || (k !== d && v[idx - 1] < v[idx + 1])) prevK = k + 1;
+    else prevK = k - 1;
+    const prevX = v[prevK + MAX];
+    const prevY = prevX - prevK;
+    while (x > prevX && y > prevY) { x--; y--; ops.unshift({ type: "eq", a: x, b: y }); }
+    if (d > 0) {
+      if (x > prevX) { x--; ops.unshift({ type: "del", a: x, b: -1 }); }
+      else           { y--; ops.unshift({ type: "ins", a: -1, b: y }); }
+    }
+  }
+
+  const CTX = 3;
+  const hunks = [];
+  let i = 0;
+  while (i < ops.length) {
+    if (ops[i].type !== "eq") {
+      const start = Math.max(0, i - CTX);
+      const end   = Math.min(ops.length, i + 1 + CTX);
+      const lines = [];
+      let startA = ops[start].a >= 0 ? ops[start].a + 1 : (ops[start].b >= 0 ? "?" : "?");
+      let startB = ops[start].b >= 0 ? ops[start].b + 1 : "?";
+      let lenA = 0, lenB = 0;
+      for (let j = start; j < end; j++) {
+        const op = ops[j];
+        if (op.type === "eq") {
+          lines.push({ type: "ctx", text: linesA[op.a], noA: op.a + 1, noB: op.b + 1 });
+          lenA++; lenB++;
+        } else if (op.type === "del") {
+          lines.push({ type: "del", text: linesA[op.a], noA: op.a + 1, noB: null });
+          lenA++;
+        } else {
+          lines.push({ type: "add", text: linesB[op.b], noA: null, noB: op.b + 1 });
+          lenB++;
+        }
+      }
+      hunks.push({ startA, startB, lenA, lenB, lines });
+      i = end;
+    } else {
+      i++;
+    }
+  }
+  return hunks;
+}
+
+function prettyJson(str) {
+  try { return JSON.stringify(JSON.parse(str), null, 2); }
+  catch { return str || ""; }
+}
+
+function syntaxHighlight(str) {
+  return escHtml(str)
+    .replace(/"(.*?)":/g, '<span style="color:#7eb8ff">"$1"</span>:')
+    .replace(/: "([^"]*)"/g, ': <span style="color:#ffd97d">"$1"</span>')
+    .replace(/: (\d+\.?\d*)/g, ': <span style="color:#7fffb2">$1</span>')
+    .replace(/: (true|false|null)/g, ': <span style="color:#ff9e9e">$1</span>');
+}
+
+function escHtml(s = "") {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function tryParseUrl(url) {
+  try { return new URL(url); } catch { return null; }
+}
+
+function shortUrl(url) {
+  try {
+    const u = new URL(url);
+    return u.pathname + (u.search.length > 30 ? u.search.slice(0, 30) + "…" : u.search);
+  } catch { return url.slice(0, 50); }
+}
+
+function statusClass(s) {
+  if (s >= 200 && s < 300) return "status-badge status-2xx";
+  if (s >= 300 && s < 400) return "status-badge status-3xx";
+  if (s >= 400 && s < 500) return "status-badge status-4xx";
+  return "status-badge status-5xx";
+}
+
+init();
+</script>
+</body>
+</html>
