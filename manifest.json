@@ -3,7 +3,7 @@
   "name": "Request Diff",
   "version": "1.0.0",
   "description": "API 응답을 캡처하고 비교하세요.",
-  "permissions": ["storage"],
+  "permissions": ["storage", "scripting"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background/background.js"

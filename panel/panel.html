@@ -17,7 +17,7 @@
   --text:      #e8e8f0;
   --muted:     #5a5a72;
   --muted2:    #3d3d50;
-  --accent:    #7fffb2;        /* 민트 그린 */
+  --accent:    #7fffb2;   
   --accent-dim: rgba(127,255,178,0.08);
   --add:       #1a3d2b;
   --add-text:  #6effaa;
@@ -95,10 +95,8 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   font-size: 10px; color: var(--muted);
 }
 
-/* ── Main body ───────────────────────────────────── */
 .body { display: flex; flex: 1; overflow: hidden; }
 
-/* ── Left: request list ──────────────────────────── */
 .list-panel {
   width: var(--panel-left);
   min-width: 220px; max-width: 460px;
@@ -282,7 +280,6 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   border-bottom: 1px solid var(--border);
 }
 
-/* ── Placeholder / no-diff ───────────────────────── */
 .diff-placeholder {
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
@@ -394,13 +391,11 @@ function init() {
   });
 
   loadEntries();
-  // 3초마다 자동 폴링
   pollTimer = setInterval(loadEntries, 3000);
 }
 
-// ── 요청 목록 로드 ────────────────────────────────────────
 function loadEntries() {
-  chrome.storage.session.get("rdEntries", ({ rdEntries = [] }) => {
+  chrome.storage.local.get("rdEntries", ({ rdEntries = [] }) => {
     entries = rdEntries;
     renderList();
     document.getElementById("capture-count").textContent =
@@ -409,7 +404,7 @@ function loadEntries() {
 }
 
 function clearAll() {
-  chrome.storage.session.set({ rdEntries: [] });
+  chrome.storage.local.set({ rdEntries: [] });
   entries = []; pinA = null; pinB = null;
   renderList();
   resetDiff();
@@ -479,7 +474,6 @@ function setPin(slot, id) {
   if (pinA && pinB) runDiff();
 }
 
-// ── Diff 실행 ─────────────────────────────────────────────
 function runDiff() {
   if (!pinA || !pinB) {
     alert("A와 B를 모두 선택해주세요.");
