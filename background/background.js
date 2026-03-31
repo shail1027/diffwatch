@@ -1,3 +1,3 @@
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.session.set({ rdEntries: [] });
+  chrome.storage.local.set({ rdEntries: [] });
 });
