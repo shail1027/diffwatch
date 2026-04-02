@@ -300,8 +300,6 @@ function prettyJson(str) {
 }
 
 function syntaxHighlight(str) {
-  // HTML 이스케이프 후 JSON 토큰 강조
-  // "는 escHtml이 변환하지 않으므로 키/값 패턴 매칭이 정상 동작함
   return escHtml(str)
     .replace(/"((?:[^"\\]|\\.)*)"\s*:/g, '<span style="color:#7eb8ff">"$1"</span>:')
     .replace(/:\s*"((?:[^"\\]|\\.)*)"/g, (m, v) => `: <span style="color:#ffd97d">"${v}"</span>`)
